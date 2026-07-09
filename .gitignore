@@ -1,0 +1,5 @@
+/reports/*.csv
+/reports/*.json
+*.exe
+*.test
+.DS_Store
