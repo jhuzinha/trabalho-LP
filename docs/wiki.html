@@ -1,0 +1,582 @@
+<title>Wiki — Web Scraper Concorrente em Go</title>
+<style>
+  /* ─────────────────────────────────────────────────────────────
+     Wiki — tema claro único, deliberado.
+     Não redefinimos tokens para dark: a página é sempre clara.
+  ───────────────────────────────────────────────────────────── */
+  :root {
+    --sans: "SF Pro Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
+
+    --bg:      #eef2f6;
+    --paper:   #ffffff;
+    --panel:   #f5f8fb;
+    --border:  #d9e1ea;
+    --border2: #e7edf3;
+    --ink:     #16202b;
+    --body:    #33424f;
+    --muted:   #64757f;
+    --faint:   #93a3ad;
+    --accent:  #007d9c;   /* Go cyan, ajustado p/ fundo claro */
+    --accent2: #005b74;
+    --accent-soft: #e2f0f4;
+    --good:    #1a7f37;
+    --warn:    #9a6700;
+    --bad:     #cf222e;
+    --good-soft:#e6f3ea; --warn-soft:#fbf3e0; --bad-soft:#fbe9e9;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: var(--bg); color: var(--body);
+    font-family: var(--sans); font-size: 17px; line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── layout ─────────────────────────────────────────────── */
+  .layout { display: grid; grid-template-columns: 280px minmax(0, 1fr);
+            max-width: 1240px; margin: 0 auto; align-items: start; }
+
+  .sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto;
+             padding: 34px 22px 40px; border-right: 1px solid var(--border);
+             background: var(--bg); }
+  .sb-brand { display: flex; align-items: center; gap: 11px; margin-bottom: 6px; }
+  .sb-brand .logo { font-family: var(--mono); font-weight: 800; color: #fff;
+                    background: var(--accent); border-radius: 8px; padding: 4px 10px;
+                    font-size: 1.05rem; letter-spacing: -.02em; }
+  .sb-brand .t { font-weight: 700; color: var(--ink); font-size: .96rem; line-height: 1.2; }
+  .sb-sub { color: var(--faint); font-size: .78rem; font-family: var(--mono);
+            margin: 0 0 22px 2px; letter-spacing: .02em; }
+  nav.toc { font-size: .88rem; }
+  nav.toc a { display: block; color: var(--muted); text-decoration: none;
+              padding: 6px 12px; border-radius: 7px; border-left: 2px solid transparent;
+              margin-bottom: 1px; transition: color .15s, background .15s; }
+  nav.toc a:hover { color: var(--accent); background: var(--accent-soft); }
+  nav.toc a.active { color: var(--accent2); background: var(--accent-soft);
+                     border-left-color: var(--accent); font-weight: 600; }
+  nav.toc .grp { font-family: var(--mono); font-size: .68rem; text-transform: uppercase;
+                 letter-spacing: .14em; color: var(--faint); margin: 18px 0 6px 12px; }
+
+  /* ── content ────────────────────────────────────────────── */
+  main { padding: 0 clamp(24px, 5vw, 80px) 120px; }
+  .content { max-width: 760px; margin: 0 auto; }
+
+  header.hero { padding: 60px 0 30px; border-bottom: 1px solid var(--border);
+                margin-bottom: 44px; }
+  .kicker { font-family: var(--mono); font-size: .76rem; letter-spacing: .18em;
+            text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 14px; }
+  h1 { font-size: clamp(2.1rem, 4.5vw, 3.1rem); line-height: 1.05; letter-spacing: -.03em;
+       color: var(--ink); font-weight: 800; margin: 0 0 .4em; text-wrap: balance; }
+  .hero p { font-size: 1.16rem; color: var(--muted); margin: 0 0 24px; max-width: 62ch; }
+  .meta { display: flex; flex-wrap: wrap; gap: 10px; }
+  .meta .chip { font-family: var(--mono); font-size: .76rem; background: var(--paper);
+                border: 1px solid var(--border); border-radius: 999px; padding: 5px 13px;
+                color: var(--muted); }
+  .meta .chip b { color: var(--ink); font-weight: 600; }
+
+  section.doc { margin-bottom: 30px; scroll-margin-top: 20px; }
+  h2 { font-size: 1.72rem; letter-spacing: -.02em; color: var(--ink); font-weight: 800;
+       margin: 52px 0 6px; padding-top: 14px; text-wrap: balance; }
+  h2 .n { font-family: var(--mono); font-size: .95rem; color: var(--accent);
+          font-weight: 600; margin-right: 12px; }
+  h3 { font-size: 1.16rem; color: var(--ink); font-weight: 700; margin: 30px 0 4px;
+       letter-spacing: -.01em; }
+  h4 { font-size: .98rem; color: var(--ink); font-weight: 700; margin: 22px 0 2px; }
+  p { margin: 12px 0; }
+  .lead-p { font-size: 1.08rem; color: var(--ink); }
+  a.inline { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
+  a.inline:hover { border-bottom-color: var(--accent); }
+  strong { color: var(--ink); font-weight: 700; }
+  em { color: var(--body); }
+
+  code { font-family: var(--mono); font-size: .86em; background: var(--panel);
+         border: 1px solid var(--border2); border-radius: 5px; padding: .1em .38em; color: var(--accent2); }
+  pre { margin: 18px 0; background: #0d1117; border-radius: 11px; overflow-x: auto;
+        border: 1px solid #212b36; }
+  pre .bar { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid #212b36; }
+  pre .bar span { width: 10px; height: 10px; border-radius: 50%; }
+  pre .bar .r{background:#ff5f56}.bar .y{background:#ffbd2e}.bar .g{background:#27c93f}
+  pre .bar .fn { margin-left: 8px; font-family: var(--mono); font-size: .74rem; color: #6b7d8c; }
+  pre code { display: block; background: none; border: none; padding: 18px 20px; color: #d6dee6;
+             font-size: .84rem; line-height: 1.62; white-space: pre; }
+  .cm { color: #6b7d8c; } .kw { color: #ff7b9c; } .fn { color: #4fc3e0; }
+  .st { color: #7fd88f; } .lt { color: #e2b341; }
+
+  ul, ol { margin: 12px 0; padding-left: 22px; }
+  li { margin: 7px 0; }
+  ul.feat { list-style: none; padding: 0; }
+  ul.feat li { padding-left: 26px; position: relative; }
+  ul.feat li::before { content: "›"; position: absolute; left: 6px; color: var(--accent);
+                       font-family: var(--mono); font-weight: 700; }
+
+  .note { border-radius: 10px; padding: 16px 18px; margin: 20px 0; font-size: .96rem;
+          border: 1px solid var(--border); background: var(--panel); }
+  .note .lbl { font-family: var(--mono); font-size: .72rem; text-transform: uppercase;
+               letter-spacing: .1em; font-weight: 700; display: block; margin-bottom: 4px; }
+  .note.tip { background: var(--accent-soft); border-color: #bfe0e8; }
+  .note.tip .lbl { color: var(--accent2); }
+  .note.warn { background: var(--warn-soft); border-color: #ecd9a8; }
+  .note.warn .lbl { color: var(--warn); }
+
+  .table-wrap { overflow-x: auto; margin: 20px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; background: var(--paper);
+          border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 11px 15px; border-bottom: 1px solid var(--border2);
+           vertical-align: top; }
+  thead th { background: var(--panel); font-family: var(--mono); font-size: .74rem;
+             letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  thead th.go { color: var(--accent); } thead th.c { color: var(--warn); }
+  tbody tr:last-child td { border-bottom: none; }
+  td:first-child, th:first-child { font-weight: 600; color: var(--ink); }
+  .c-txt { color: var(--muted); }
+
+  .vs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+  @media (max-width: 720px) { .vs { grid-template-columns: 1fr; } }
+  .vs pre { margin: 0; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin: 22px 0; }
+  @media (max-width: 640px) { .stat-row { grid-template-columns: 1fr; } }
+  .stat { background: var(--paper); border: 1px solid var(--border); border-radius: 11px; padding: 16px 18px; }
+  .stat .big { font-family: var(--mono); font-weight: 700; font-size: 2rem; letter-spacing: -.02em;
+               color: var(--accent); font-variant-numeric: tabular-nums; line-height: 1; }
+  .stat .lbl { color: var(--muted); font-size: .84rem; margin-top: 7px; }
+  .stat.good .big { color: var(--good); }
+  .stat.warn .big { color: var(--warn); }
+
+  /* team */
+  .person { background: var(--paper); border: 1px solid var(--border); border-radius: 12px;
+            padding: 20px 22px; margin: 16px 0; }
+  .person .head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .person h3 { margin: 0; }
+  .person .role { font-family: var(--mono); font-size: .74rem; color: #fff; background: var(--accent);
+                  border-radius: 6px; padding: 3px 9px; letter-spacing: .02em; }
+  .person .files { font-family: var(--mono); font-size: .78rem; color: var(--accent2); }
+  .person .comp { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border);
+                  font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+  .person .comp b { color: var(--accent); }
+
+  footer { max-width: 760px; margin: 40px auto 0; padding-top: 22px; border-top: 1px solid var(--border);
+           color: var(--faint); font-size: .84rem; font-family: var(--mono); }
+
+  .totop { position: fixed; bottom: 22px; right: 22px; background: var(--paper); border: 1px solid var(--border);
+           color: var(--accent); width: 42px; height: 42px; border-radius: 10px; cursor: pointer;
+           font-size: 1.1rem; display: none; place-items: center; box-shadow: 0 6px 20px rgba(20,40,60,.12); }
+  .totop.show { display: grid; }
+
+  /* mobile: sidebar becomes top bar */
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border);
+               padding: 20px; }
+    nav.toc { columns: 2; column-gap: 12px; }
+    nav.toc .grp:first-child { margin-top: 0; }
+  }
+</style>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sb-brand"><span class="logo">Go</span><span class="t">Web Scraper<br>Concorrente</span></div>
+    <p class="sb-sub">wiki do projeto · v1.0</p>
+    <nav class="toc" id="toc">
+      <div class="grp">Introdução</div>
+      <a href="#visao">Visão geral</a>
+      <a href="#linguagem">1 · A linguagem Go</a>
+      <a href="#projeto">2 · O projeto</a>
+      <a href="#estrutura">3 · Estrutura do código</a>
+      <div class="grp">Critérios de avaliação</div>
+      <a href="#construtores">4 · Construtores</a>
+      <a href="#legibilidade">5 · Legibilidade</a>
+      <a href="#escrita">6 · Capacidade de escrita</a>
+      <a href="#confiabilidade">7 · Confiabilidade</a>
+      <a href="#custo">8 · Custo e outros</a>
+      <div class="grp">Prática</div>
+      <a href="#exemplos">9 · Exemplos de código</a>
+      <a href="#demo">10 · Demonstração</a>
+      <a href="#comparacao-c">11 · Comparação com C</a>
+      <a href="#comparacao-py">12 · Python × Go</a>
+      <div class="grp">Grupo</div>
+      <a href="#equipe">13 · Equipe</a>
+      <a href="#executar">14 · Como executar</a>
+    </nav>
+  </aside>
+
+  <main>
+    <div class="content">
+      <header class="hero">
+        <div class="kicker">Linguagens de Programação · Documentação</div>
+        <h1>Web Scraper Concorrente em Go</h1>
+        <p>Um comparador de preços que consulta várias lojas <strong>ao mesmo tempo</strong>, construído para demonstrar o modelo de concorrência da linguagem Go — <code>goroutines</code>, <code>channels</code> e <code>select</code> — e compará-lo com C e Python.</p>
+        <div class="meta">
+          <span class="chip"><b>Linguagem:</b> Go 1.21+</span>
+          <span class="chip"><b>Módulos:</b> 3</span>
+          <span class="chip"><b>Integrantes:</b> 5</span>
+          <span class="chip"><b>Comparações:</b> C · Python</span>
+        </div>
+      </header>
+
+      <!-- VISÃO GERAL -->
+      <section class="doc" id="visao">
+        <h2>Visão geral</h2>
+        <p class="lead-p">Este projeto resolve um problema simples do dia a dia — <strong>descobrir em qual loja um produto está mais barato</strong> — e o usa como pretexto para exercitar aquilo que a linguagem Go faz de melhor: concorrência de forma nativa, legível e segura.</p>
+        <p>A ideia central é que, ao pesquisar preços em dez lojas, o computador passa a maior parte do tempo <em>esperando</em> a resposta de cada site, e não calculando. Se as dez consultas forem disparadas <strong>simultaneamente</strong>, em vez de uma após a outra, o tempo total cai de "a soma de todas as esperas" para "a espera da loja mais lenta". É exatamente esse ganho que o projeto mede e demonstra.</p>
+        <p>Para cobrir bem o tema, o trabalho foi dividido em três módulos independentes:</p>
+        <ul class="feat">
+          <li><strong>webscraper (mock)</strong> — sobe um servidor HTTP local que simula 10 lojas com latências diferentes. É uma demonstração <em>determinística</em>, que roda sem depender da internet e sempre exibe o comportamento de timeout.</li>
+          <li><strong>webscraper-real</strong> — consulta uma API pública de verdade (<code>dummyjson.com</code>), com dados reais de produtos, preços e avaliações.</li>
+          <li><strong>python/comparacao.py</strong> — resolve o mesmo problema em Python (sequencial, com threads e com pool) para servir de referência de desempenho contra o Go.</li>
+        </ul>
+      </section>
+
+      <!-- 1 LINGUAGEM -->
+      <section class="doc" id="linguagem">
+        <h2><span class="n">01</span>A linguagem Go</h2>
+        <h3>Histórico</h3>
+        <p>Go (ou <em>golang</em>) nasceu dentro do <strong>Google em 2007</strong>, das mãos de <strong>Robert Griesemer, Rob Pike e Ken Thompson</strong> — os dois últimos com raízes profundas no Unix e na própria linguagem C. A motivação era concreta e dolorosa: na escala do Google, as compilações de C++ eram lentíssimas, a gestão de dependências era confusa e escrever software concorrente era difícil e propenso a erros.</p>
+        <p>A resposta foi projetar uma linguagem deliberadamente <strong>minimalista</strong>: rápida de compilar, fácil de ler e com concorrência embutida na própria sintaxe. Go foi <strong>anunciada como projeto open source em novembro de 2009</strong>, sob licença BSD. A versão <strong>1.0 saiu em março de 2012</strong>, acompanhada da célebre "promessa de compatibilidade do Go 1": código escrito naquela época ainda compila nas versões atuais.</p>
+        <h3>Versão e características</h3>
+        <p>A versão estável atual é a série <strong>Go 1.24</strong> (2025). Em resumo, Go é:</p>
+        <ul class="feat">
+          <li><strong>Compilada</strong> para código de máquina nativo (não interpretada), gerando um binário único.</li>
+          <li><strong>Estaticamente tipada</strong>, com verificação de tipos em tempo de compilação.</li>
+          <li><strong>Gerenciada por <em>garbage collector</em></strong> — o programador não libera memória manualmente.</li>
+          <li>Da <strong>família sintática do C</strong>, mas com apenas <strong>25 palavras-chave</strong>, o que mantém a linguagem pequena e memorizável.</li>
+        </ul>
+        <div class="note tip">
+          <span class="lbl">Onde Go é usado</span>
+          Boa parte da infraestrutura moderna é escrita em Go: <strong>Docker, Kubernetes, Terraform, Prometheus e Grafana</strong>. Isso reforça o domínio natural da linguagem — serviços de rede concorrentes, exatamente o caso deste projeto.
+        </div>
+      </section>
+
+      <!-- 2 PROJETO -->
+      <section class="doc" id="projeto">
+        <h2><span class="n">02</span>O projeto: premissas, usuário e domínio</h2>
+        <h3>Domínio</h3>
+        <p>O domínio é <strong>web scraping concorrente aplicado a comparação de preços</strong>. O programa coleta, via requisições HTTP, o preço de um mesmo produto em várias lojas, decodifica a resposta em JSON e monta um ranking do mais barato ao mais caro.</p>
+        <h3>Usuário</h3>
+        <p>Há dois perfis de usuário. O primeiro é o <strong>consumidor</strong> que quer o menor preço sem precisar abrir dez abas no navegador. O segundo — e principal, dado o contexto acadêmico — é o <strong>estudante</strong> que quer <em>ver</em> a concorrência acontecendo: o terminal mostra, em tempo real, cada loja respondendo na ordem da sua velocidade, e as lojas lentas sendo descartadas.</p>
+        <h3>Premissa central</h3>
+        <p>A premissa que justifica toda a arquitetura é: <strong>o gargalo é a rede, não o processador</strong>. Como cada requisição passa quase todo o tempo esperando a resposta do servidor, disparar as requisições em paralelo não sobrecarrega a CPU — apenas aproveita o tempo ocioso de espera. Por isso o tempo total tende ao tempo da requisição mais lenta, e não à soma de todas.</p>
+        <p>Uma premissa secundária, de engenharia, é a de <strong>robustez</strong>: uma loja que demora demais não pode travar o programa inteiro. Daí a necessidade de um <strong>timeout</strong> por loja, implementado com <code>select</code>.</p>
+      </section>
+
+      <!-- 3 ESTRUTURA -->
+      <section class="doc" id="estrutura">
+        <h2><span class="n">03</span>Estrutura do código</h2>
+        <p>O repositório está organizado em três pastas independentes, cada uma com sua própria responsabilidade:</p>
+        <pre><div class="bar"><span class="r"></span><span class="y"></span><span class="g"></span><span class="fn">árvore do projeto</span></div><code>trabalho-LP/
+├── webscraper/              <span class="cm"># módulo 1 — demo com lojas simuladas</span>
+│   ├── main.go              <span class="cm"># orquestra goroutines + coleta pelo canal</span>
+│   ├── go.mod
+│   ├── ansi_windows.go      <span class="cm"># cores ANSI no Windows (build tag)</span>
+│   ├── ansi_other.go        <span class="cm"># no-op em Linux/macOS (build tag)</span>
+│   └── mock/
+│       └── server.go        <span class="cm"># servidor HTTP que imita as 10 lojas</span>
+├── webscraper-real/         <span class="cm"># módulo 2 — API pública real</span>
+│   ├── main.go              <span class="cm"># busca na DummyJSON + structs + JSON</span>
+│   ├── ansi_windows.go
+│   ├── ansi_other.go
+│   └── go.mod
+└── python/
+    └── comparacao.py        <span class="cm"># módulo 3 — Python p/ comparação</span></code></pre>
+        <p>Cada módulo Go tem seu próprio <code>go.mod</code>, o que os torna projetos independentes e compiláveis isoladamente. A separação em <em>build tags</em> (<code>ansi_windows.go</code> / <code>ansi_other.go</code>) resolve um detalhe de portabilidade explicado na seção de <a class="inline" href="#confiabilidade">Confiabilidade</a>.</p>
+      </section>
+
+      <!-- 4 CONSTRUTORES -->
+      <section class="doc" id="construtores">
+        <h2><span class="n">04</span>Construtores</h2>
+        <p class="lead-p">O grande diferencial de Go é que a concorrência não vem de uma biblioteca — ela é feita de <strong>palavras-chave da própria linguagem</strong>. Três construtores sustentam o projeto inteiro.</p>
+        <h3>Goroutines — <code>go</code></h3>
+        <p>Uma <strong>goroutine</strong> é uma função executando concorrentemente. Basta prefixar a chamada com a palavra <code>go</code>. Diferente de uma thread do sistema operacional, uma goroutine começa com apenas <strong>~2&nbsp;KB de pilha</strong> e é escalonada pelo próprio runtime de Go sobre os núcleos disponíveis — por isso é viável criar milhares delas. No projeto, dispara-se <strong>uma goroutine por loja</strong>.</p>
+        <h3>Channels — <code>chan</code></h3>
+        <p>Um <strong>channel</strong> é um "cano" tipado por onde as goroutines trocam dados com segurança, sem que o programador precise de <em>locks</em> manuais. A filosofia de Go é: <em>"não se comunique compartilhando memória; compartilhe memória comunicando-se"</em>. O operador <code>&lt;-ch</code> recebe um valor e <strong>bloqueia até que haja um</strong>, o que sincroniza as goroutines naturalmente.</p>
+        <h3>Select — <code>select</code></h3>
+        <p>O <code>select</code> espera <strong>vários canais ao mesmo tempo</strong> e reage ao primeiro que estiver pronto. É o coração do timeout do projeto: uma goroutine interna faz o request HTTP e envia o resultado por um canal; em paralelo, <code>time.After</code> devolve um valor após o prazo. O <code>select</code> escolhe quem chegar primeiro — resposta válida ou estouro de tempo.</p>
+        <h4>Demais construtores usados</h4>
+        <ul class="feat">
+          <li><code>struct</code> — para modelar <code>Result</code>, <code>Product</code> e a configuração das lojas.</li>
+          <li><code>defer</code> — garante <code>resp.Body.Close()</code> ao final da função, mesmo com erro.</li>
+          <li><code>slice</code> e <code>map</code> — coleções nativas para acumular e ordenar resultados.</li>
+          <li><strong>canal com buffer 1</strong> — <code>make(chan Result, 1)</code> evita que a goroutine interna fique presa (vazamento) caso o timeout vença primeiro.</li>
+        </ul>
+      </section>
+
+      <!-- 5 LEGIBILIDADE -->
+      <section class="doc" id="legibilidade">
+        <h2><span class="n">05</span>Legibilidade</h2>
+        <p>Legibilidade é o quanto um código é fácil de <em>ler e entender</em>. Go trata isso como prioridade de projeto:</p>
+        <ul class="feat">
+          <li><strong>gofmt</strong> — um formatador oficial embutido. Não existe debate sobre estilo: há <em>uma</em> forma canônica, e a ferramenta a aplica. Todo código Go se parece com todo código Go.</li>
+          <li><strong>25 palavras-chave</strong> — a linguagem inteira cabe na cabeça; há pouca sintaxe para decorar.</li>
+          <li><strong>Erros explícitos</strong> — o padrão <code>if err != nil</code> deixa o caminho de falha visível na leitura, sem exceções "saltando" de lugares distantes.</li>
+          <li><strong>Sem pré-processador, headers ou macros</strong> — o que se lê é o que executa.</li>
+        </ul>
+        <h3>Comparação com C</h3>
+        <p>A diferença fica evidente na <strong>mesma tarefa</strong> — buscar uma URL e ler o JSON de resposta. Em Go, quatro linhas com a biblioteca padrão; em C, é preciso a <code>libcurl</code> (dependência externa) só para o HTTP, e ainda um parser JSON de terceiros à parte:</p>
+        <div class="vs">
+          <pre><div class="bar"><span class="r"></span><span class="y"></span><span class="g"></span><span class="fn">Go — biblioteca padrão</span></div><code>resp, err := http.<span class="fn">Get</span>(url)
+<span class="kw">if</span> err != <span class="lt">nil</span> { <span class="kw">return</span> err }
+<span class="kw">defer</span> resp.Body.<span class="fn">Close</span>()
+json.<span class="fn">NewDecoder</span>(resp.Body).
+     <span class="fn">Decode</span>(&amp;data)</code></pre>
+          <pre><div class="bar"><span class="r"></span><span class="y"></span><span class="g"></span><span class="fn">C — libcurl + parser externo</span></div><code><span class="cm">#include &lt;curl/curl.h&gt;</span>
+CURL *c = <span class="fn">curl_easy_init</span>();
+<span class="fn">curl_easy_setopt</span>(c, CURLOPT_URL, url);
+<span class="fn">curl_easy_setopt</span>(c, CURLOPT_WRITEFUNCTION, cb);
+<span class="kw">if</span> (<span class="fn">curl_easy_perform</span>(c) != CURLE_OK) {...}
+<span class="fn">curl_easy_cleanup</span>(c);
+<span class="cm">/* + cJSON à parte p/ ler o JSON */</span></code></pre>
+        </div>
+        <p>Somam-se a isso, em C, os <code>#include</code>/<code>#define</code>, a aritmética de ponteiros e a ausência de um formatador único — cada projeto adota seu próprio estilo, o que dificulta a leitura por terceiros.</p>
+      </section>
+
+      <!-- 6 ESCRITA -->
+      <section class="doc" id="escrita">
+        <h2><span class="n">06</span>Capacidade de escrita</h2>
+        <p>Capacidade de escrita (<em>writability</em>) é o quanto a linguagem facilita <em>expressar</em> uma solução com pouco esforço. Aqui a biblioteca padrão de Go faz o trabalho pesado:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Recurso</th><th class="go">Go (nativo)</th><th class="c">Em C seria…</th></tr></thead>
+            <tbody>
+              <tr><td>HTTP</td><td>um <code>http.Get(url)</code> da stdlib</td><td class="c-txt">libcurl (dependência externa) configurada à mão</td></tr>
+              <tr><td>JSON</td><td>decodifica direto em <code>struct</code> com <em>tags</em></td><td class="c-txt">não há JSON nativo — cJSON / jansson</td></tr>
+              <tr><td>Concorrência</td><td><code>go</code>, <code>chan</code>, <code>select</code></td><td class="c-txt"><code>pthread_create</code>, mutex e join manuais</td></tr>
+              <tr><td>Portabilidade</td><td><code>GOOS=windows go build</code></td><td class="c-txt">toolchain cruzado dedicado por alvo</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note tip">
+          <span class="lbl">Comprovado no projeto</span>
+          A partir do Linux, o mesmo código-fonte gerou um executável Windows com <strong>um único comando</strong>: <code>GOOS=windows go build</code>. Essa portabilidade trivial é uma das maiores vantagens de escrita de Go.
+        </div>
+      </section>
+
+      <!-- 7 CONFIABILIDADE -->
+      <section class="doc" id="confiabilidade">
+        <h2><span class="n">07</span>Confiabilidade</h2>
+        <p>Confiabilidade é a capacidade da linguagem de evitar que o programa se comporte de forma incorreta. Go elimina, por construção, classes inteiras de bugs que assombram o C:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Risco</th><th class="go">Go</th><th class="c">C</th></tr></thead>
+            <tbody>
+              <tr><td>Memória</td><td>garbage collector automático</td><td class="c-txt"><code>malloc</code>/<code>free</code> manual</td></tr>
+              <tr><td>Ponteiro solto</td><td>não há <em>use-after-free</em></td><td class="c-txt">dangling pointer, double-free</td></tr>
+              <tr><td>Buffer</td><td>checagem de limites em runtime</td><td class="c-txt">estouro de buffer silencioso</td></tr>
+              <tr><td>Corrida de dados</td><td><code>go run -race</code> detecta</td><td class="c-txt">sem detector nativo</td></tr>
+              <tr><td>Falha</td><td><code>panic</code> explícito</td><td class="c-txt">comportamento indefinido (UB)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>No projeto, a confiabilidade aparece de forma concreta no <strong>canal com buffer 1</strong>: se o timeout do <code>select</code> vencer antes da resposta, a goroutine interna ainda consegue enviar seu resultado sem ficar bloqueada para sempre — evitando um <em>goroutine leak</em>. O código documenta exatamente isso.</p>
+        <div class="note warn">
+          <span class="lbl">Bug real encontrado e corrigido</span>
+          A versão original chamava <code>syscall.NewLazyDLL</code> (API exclusiva do Windows) sem <em>build tags</em>. O código <strong>não compilava em Linux/macOS</strong>, pois o compilador exige o símbolo mesmo com o teste <code>runtime.GOOS</code>. A correção idiomática foi separar a função em dois arquivos com <em>build tags</em> — <code>ansi_windows.go</code> (Windows) e <code>ansi_other.go</code> (no-op). Isso restaurou a compilação em todas as plataformas.
+        </div>
+      </section>
+
+      <!-- 8 CUSTO -->
+      <section class="doc" id="custo">
+        <h2><span class="n">08</span>Custo e outros fatores</h2>
+        <p>Além dos critérios de linguagem, pesam fatores práticos de adoção. Go sai bem em quase todos:</p>
+        <div class="stat-row">
+          <div class="stat"><div class="big">R$0</div><div class="lbl">licença BSD — open source e gratuita</div></div>
+          <div class="stat"><div class="big">~2 KB</div><div class="lbl">por goroutine, contra ~1 MB por thread do SO</div></div>
+          <div class="stat"><div class="big">1</div><div class="lbl">binário estático único — copiar e rodar</div></div>
+        </div>
+        <h3>Os "outros" fatores</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Fator</th><th class="go">Go</th><th class="c">C</th></tr></thead>
+            <tbody>
+              <tr><td>Tooling oficial</td><td><code>go</code> build/test/fmt/mod/pprof no mesmo toolchain</td><td class="c-txt">make + compilador + ferramentas soltas</td></tr>
+              <tr><td>Portabilidade</td><td>um comando cruza p/ Win/Mac/Linux/ARM</td><td class="c-txt">toolchain por alvo; <code>#ifdef</code> por SO</td></tr>
+              <tr><td>Implantação</td><td>binário estático → contêiner de poucos MB</td><td class="c-txt">gerenciar libs dinâmicas e versões</td></tr>
+              <tr><td>Manutenção</td><td>promessa de compatibilidade do Go 1</td><td class="c-txt">estável, mas UB/portabilidade cobram depois</td></tr>
+              <tr><td>Aprendizado / mercado</td><td>linguagem pequena; forte em nuvem e DevOps</td><td class="c-txt">onipresente em sistemas e embarcados</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note warn">
+          <span class="lbl">Trade-off honesto</span>
+          O garbage collector troca controle fino de memória por segurança e produtividade. Para I/O de rede — o domínio deste projeto — o custo é irrelevante. Já em <strong>tempo-real duro e sistemas embarcados</strong>, a previsibilidade do C ainda vence.
+        </div>
+      </section>
+
+      <!-- 9 EXEMPLOS -->
+      <section class="doc" id="exemplos">
+        <h2><span class="n">09</span>Exemplos de código</h2>
+        <p>O fluxo do módulo mock cabe em três ideias: <strong>disparar</strong>, <strong>esperar</strong> e <strong>coletar</strong>.</p>
+        <pre><div class="bar"><span class="r"></span><span class="y"></span><span class="g"></span><span class="fn">webscraper/main.go</span></div><code><span class="cm">// 1. canal com buffer: goroutines enviam sem travar umas às outras</span>
+ch := <span class="fn">make</span>(<span class="kw">chan</span> Result, <span class="fn">len</span>(mock.Stores))
+
+<span class="cm">// 2. dispara TODAS as lojas ao mesmo tempo — uma goroutine cada</span>
+<span class="kw">for</span> _, store := <span class="kw">range</span> mock.Stores {
+    url := fmt.<span class="fn">Sprintf</span>(<span class="st">"http://localhost:%d%s"</span>, serverPort, store.Path)
+    <span class="kw">go</span> <span class="fn">scrapePrice</span>(store.Name, url, ch)
+}
+
+<span class="cm">// 3. coleta pelo canal — a ordem é a VELOCIDADE da loja, não a da lista</span>
+<span class="kw">for</span> <span class="kw">range</span> mock.Stores {
+    r := &lt;-ch          <span class="cm">// bloqueia até QUALQUER goroutine enviar</span>
+    results = <span class="fn">append</span>(results, r)
+    <span class="fn">printResult</span>(r)
+}</code></pre>
+        <p>E o coração do timeout, na função <code>scrapePrice</code>, com o <code>select</code> disputando entre a resposta HTTP e o relógio:</p>
+        <pre><div class="bar"><span class="r"></span><span class="y"></span><span class="g"></span><span class="fn">o padrão SELECT</span></div><code>done := <span class="fn">make</span>(<span class="kw">chan</span> Result, <span class="lt">1</span>)   <span class="cm">// buffer 1 evita goroutine leak</span>
+
+<span class="kw">go</span> <span class="kw">func</span>() { <span class="cm">/* faz o http.Get e envia em 'done' */</span> }()
+
+<span class="kw">select</span> {
+<span class="kw">case</span> r := &lt;-done:              <span class="cm">// resposta chegou a tempo ✓</span>
+    ch &lt;- r
+<span class="kw">case</span> &lt;-time.<span class="fn">After</span>(storeTimeout): <span class="cm">// estourou o prazo ⚠</span>
+    ch &lt;- Result{Store: name, TimedOut: <span class="lt">true</span>}
+}</code></pre>
+      </section>
+
+      <!-- 10 DEMO -->
+      <section class="doc" id="demo">
+        <h2><span class="n">10</span>Demonstração e resultados</h2>
+        <p>Os números abaixo foram <strong>medidos em execução real</strong> do projeto.</p>
+        <h3>Módulo mock — 10 lojas simuladas</h3>
+        <p>Oito lojas responderam dentro do prazo; duas (AliExpress e Carrefour, propositalmente lentas) foram descartadas pelo <code>select</code> ao estourar o timeout de 2,5&nbsp;s.</p>
+        <div class="stat-row">
+          <div class="stat good"><div class="big">4.4×</div><div class="lbl">mais rápido que consultar loja por loja</div></div>
+          <div class="stat"><div class="big">2.50s</div><div class="lbl">tempo total = a loja mais lenta, não a soma (10,9s)</div></div>
+          <div class="stat warn"><div class="big">2</div><div class="lbl">lojas cortadas pelo timeout do select</div></div>
+        </div>
+        <h3>Módulo real — API DummyJSON</h3>
+        <p>Buscando 8 produtos de "iphone" com detalhes em paralelo, a fase concorrente ficou <strong>6,3× mais rápida</strong> que a estimativa serial, montando o ranking de preços com desconto e avaliação.</p>
+        <div class="stat-row">
+          <div class="stat good"><div class="big">6.3×</div><div class="lbl">speedup da fase concorrente</div></div>
+          <div class="stat"><div class="big">0.38s</div><div class="lbl">para detalhar 8 produtos simultaneamente</div></div>
+          <div class="stat"><div class="big">8</div><div class="lbl">produtos ranqueados do mais barato ao mais caro</div></div>
+        </div>
+      </section>
+
+      <!-- 11 COMPARAÇÃO C -->
+      <section class="doc" id="comparacao-c">
+        <h2><span class="n">11</span>Comparação com C</h2>
+        <p>Go e C compartilham a mesma família de sintaxe, mas separa-os décadas de evolução em segurança e produtividade. A tabela consolida os pontos discutidos ao longo desta wiki:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Critério</th><th class="go">Go</th><th class="c">C</th></tr></thead>
+            <tbody>
+              <tr><td>Concorrência</td><td>nativa: <code>go</code>, channels, select</td><td class="c-txt">manual: pthreads + mutex/locks</td></tr>
+              <tr><td>Memória</td><td>garbage collector</td><td class="c-txt"><code>malloc</code>/<code>free</code> manual</td></tr>
+              <tr><td>Segurança</td><td>sem ponteiro inseguro; race detector</td><td class="c-txt">buffer overflow, UB, segfault</td></tr>
+              <tr><td>HTTP + JSON</td><td>bibliotecas padrão embutidas</td><td class="c-txt">dependências externas (libcurl, cJSON)</td></tr>
+              <tr><td>Compilação</td><td>rápida; binário estático único</td><td class="c-txt">rápida, mas link/deps podem doer</td></tr>
+              <tr><td>Cross-compile</td><td><code>GOOS=windows go build</code></td><td class="c-txt">toolchain cruzado dedicado</td></tr>
+              <tr><td>Legibilidade</td><td>gofmt único; 25 palavras-chave</td><td class="c-txt">macros, headers, estilos divergentes</td></tr>
+              <tr><td>Tempo-real / embarcado</td><td class="c-txt">GC introduz pausas</td><td><strong>vantagem do C:</strong> controle total</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Em resumo: <strong>C continua imbatível</strong> em sistemas embarcados e tempo-real duro, onde o controle absoluto de memória e a previsibilidade importam mais que a produtividade. Já para <strong>serviços de rede concorrentes</strong> — o domínio deste projeto — Go entrega desempenho equivalente com muito menos risco e muito menos código.</p>
+      </section>
+
+      <!-- 12 PYTHON -->
+      <section class="doc" id="comparacao-py">
+        <h2><span class="n">12</span>Comparação Python × Go</h2>
+        <p>O módulo em Python resolve o mesmo problema de três formas, para servir de referência. Os tempos foram medidos na mesma execução:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Implementação</th><th>Tempo</th><th>vs sequencial</th><th>Observação</th></tr></thead>
+            <tbody>
+              <tr><td>Python sequencial</td><td>6.01s</td><td class="c-txt">1.0×</td><td class="c-txt">sem concorrência</td></tr>
+              <tr><td>Python threads + queue</td><td>7.29s</td><td class="c-txt">0.8×</td><td class="c-txt">GIL só libera em I/O</td></tr>
+              <tr><td>Python ThreadPoolExecutor</td><td>3.33s</td><td class="c-txt">1.8×</td><td class="c-txt">idiomático, mas ainda limitado pelo GIL</td></tr>
+              <tr><td style="color:var(--accent)">Go goroutines</td><td style="color:var(--accent)">0.29s</td><td style="color:var(--good);font-weight:700">20.7×</td><td class="c-txt">paralelismo real, 2KB/goroutine</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>A diferença brutal vem do <strong>GIL (Global Interpreter Lock)</strong> do Python, que permite apenas uma thread executando bytecode Python por vez. Em tarefas de I/O o GIL é liberado durante a espera, então as threads ajudam um pouco — mas continuam sendo threads pesadas do sistema operacional. As <strong>goroutines</strong> de Go, ao contrário, rodam em <strong>paralelismo real</strong> sobre vários núcleos e custam uma fração da memória. Daí o abismo de desempenho.</p>
+      </section>
+
+      <!-- 13 EQUIPE -->
+      <section class="doc" id="equipe">
+        <h2><span class="n">13</span>Equipe e divisão do trabalho</h2>
+        <p class="lead-p">O grupo tem <strong>5 integrantes</strong>. Cada um ficou responsável por uma parte da estrutura do <strong>código Go</strong> e, além disso, por um <strong>componente do projeto</strong> (slides, wiki, vídeo ou comparações).</p>
+
+        <div class="person">
+          <div class="head"><h3>Gustavo</h3><span class="role">Servidor mock</span><span class="files">webscraper/mock/server.go</span></div>
+          <p>Construiu o servidor HTTP que simula as lojas. Definiu o tipo <code>StoreConfig</code> (caminho, nome, preço e faixa de latência de cada loja), a lista das <strong>10 lojas</strong> — com AliExpress e Carrefour propositalmente lentas para forçar o timeout — e a função <code>StartServer</code>, que registra um handler por loja e aplica um atraso aleatório dentro da faixa antes de responder o JSON. É esse módulo que torna a demonstração determinística e independente da internet.</p>
+          <p class="comp"><b>+ também:</b> Wiki / documentação do repositório</p>
+        </div>
+
+        <div class="person">
+          <div class="head"><h3>Jhuliana</h3><span class="role">Orquestração concorrente</span><span class="files">webscraper/main.go</span></div>
+          <p>Responsável pelo <code>main.go</code> que amarra tudo: cria o <strong>canal bufferizado</strong>, percorre a lista de lojas disparando <strong>uma goroutine por loja</strong> e coleta os resultados com <code>&lt;-ch</code> na ordem em que chegam (isto é, por velocidade da loja, não pela ordem da lista). Também cuidou da montagem do ranking e do cálculo de <em>speedup</em> exibido no resumo.</p>
+          <p class="comp"><b>+ também:</b> Slides / apresentação</p>
+        </div>
+
+        <div class="person">
+          <div class="head"><h3>Marcelo</h3><span class="role">Select + timeout</span><span class="files">scrapePrice / fetchProduct</span></div>
+          <p>Implementou o núcleo de concorrência do projeto: a função que roda uma <strong>goroutine interna</strong> para o request HTTP e usa o <code>select</code> para disputar entre a resposta e o <code>time.After</code> do timeout. Foi quem definiu o padrão do <strong>buffer 1</strong> no canal <code>done</code> para evitar vazamento de goroutine quando o prazo estoura — o comportamento mais importante e mais "Go" de todo o trabalho.</p>
+          <p class="comp"><b>+ também:</b> Comparação com a linguagem C</p>
+        </div>
+
+        <div class="person">
+          <div class="head"><h3>Enzo</h3><span class="role">Scraper da API real</span><span class="files">webscraper-real/main.go</span></div>
+          <p>Desenvolveu o módulo que consulta a API pública <strong>DummyJSON</strong>. Modelou as structs <code>Product</code> e <code>SearchResponse</code> com as <em>tags</em> de JSON, escreveu a busca inicial de produtos e a decodificação das respostas em tipos Go, reaproveitando o mesmo padrão de goroutine + <code>select</code> para buscar os detalhes em paralelo com dados reais.</p>
+          <p class="comp"><b>+ também:</b> Edição de vídeo</p>
+        </div>
+
+        <div class="person">
+          <div class="head"><h3>Pedro Galeno</h3><span class="role">Saída &amp; portabilidade</span><span class="files">printSummary · ansi_*.go</span></div>
+          <p>Cuidou de toda a camada visual do terminal — a barra de progresso proporcional (<code>timeBar</code>), a impressão colorida de cada resultado (<code>printResult</code>), o resumo com ranking e performance (<code>printSummary</code>) e as cores ANSI. Também tratou da <strong>portabilidade</strong>, separando o código específico de Windows em <em>build tags</em> (<code>ansi_windows.go</code> e <code>ansi_other.go</code>) para o projeto compilar em qualquer sistema.</p>
+          <p class="comp"><b>+ também:</b> Comparação Python × Go (benchmark)</p>
+        </div>
+      </section>
+
+      <!-- 14 EXECUTAR -->
+      <section class="doc" id="executar">
+        <h2><span class="n">14</span>Como executar</h2>
+        <p>Com o Go instalado (1.21 ou superior), a partir da raiz do repositório:</p>
+        <pre><div class="bar"><span class="r"></span><span class="y"></span><span class="g"></span><span class="fn">bash</span></div><code><span class="cm"># módulo 1 — demo com lojas simuladas (não precisa de internet)</span>
+<span class="kw">cd</span> webscraper &amp;&amp; go run .
+
+<span class="cm"># módulo 2 — API real (requer conexão com a internet)</span>
+<span class="kw">cd</span> webscraper-real &amp;&amp; go run .
+
+<span class="cm"># módulo 3 — comparação em Python</span>
+<span class="kw">cd</span> python &amp;&amp; python3 comparacao.py
+
+<span class="cm"># compilar um binário (ex.: para Windows a partir do Linux)</span>
+GOOS=windows go build -o webscraper.exe .</code></pre>
+      </section>
+
+      <footer>
+        Wiki do projeto Web Scraper Concorrente em Go · Disciplina de Linguagens de Programação · Grupo de 5 integrantes.
+      </footer>
+    </div>
+  </main>
+</div>
+
+<button class="totop" id="totop" title="Voltar ao topo" aria-label="Voltar ao topo">↑</button>
+
+<script>
+  // scrollspy: destaca a seção ativa na TOC
+  const links = Array.from(document.querySelectorAll('nav.toc a'));
+  const map = new Map(links.map(a => [a.getAttribute('href').slice(1), a]));
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const a = map.get(e.target.id);
+        if (a) a.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px', threshold: 0 });
+  document.querySelectorAll('section.doc').forEach(s => obs.observe(s));
+
+  // botão voltar ao topo
+  const totop = document.getElementById('totop');
+  const main = document.querySelector('main');
+  window.addEventListener('scroll', () => {
+    totop.classList.toggle('show', window.scrollY > 600);
+  });
+  totop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+</script>

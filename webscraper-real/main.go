@@ -5,13 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
-	"runtime"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
-	"unsafe"
 )
 
 // ── Cores ANSI ────────────────────────────────────────────────────────────────
@@ -299,19 +295,4 @@ func main() {
 	}
 
 	printSummary(results, time.Since(concStart))
-}
-
-// enableWindowsANSI habilita cores ANSI no console do Windows.
-func enableWindowsANSI() {
-	if runtime.GOOS != "windows" {
-		return
-	}
-	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	getMode := kernel32.NewProc("GetConsoleMode")
-	setMode := kernel32.NewProc("SetConsoleMode")
-
-	handle := syscall.Handle(os.Stdout.Fd())
-	var mode uint32
-	getMode.Call(uintptr(handle), uintptr(unsafe.Pointer(&mode)))
-	setMode.Call(uintptr(handle), uintptr(mode|0x0004))
 }

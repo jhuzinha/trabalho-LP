@@ -4,13 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"runtime"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
-	"unsafe"
 
 	"webscraper/mock"
 )
@@ -141,6 +137,8 @@ func main() {
 	printSummary(results, wallTime)
 }
 
+
+
 func printResult(r Result) {
 	bar := timeBar(r.Elapsed, storeTimeout)
 
@@ -213,19 +211,4 @@ func printSummary(results []Result, wallTime time.Duration) {
 		}
 	}
 	fmt.Println()
-}
-
-// enableWindowsANSI habilita o processamento de cores ANSI no console do Windows.
-func enableWindowsANSI() {
-	if runtime.GOOS != "windows" {
-		return
-	}
-	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	getMode := kernel32.NewProc("GetConsoleMode")
-	setMode := kernel32.NewProc("SetConsoleMode")
-
-	handle := syscall.Handle(os.Stdout.Fd())
-	var mode uint32
-	getMode.Call(uintptr(handle), uintptr(unsafe.Pointer(&mode)))
-	setMode.Call(uintptr(handle), uintptr(mode|0x0004)) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
 }
