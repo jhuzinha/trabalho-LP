@@ -15,7 +15,8 @@ consulta várias lojas **ao mesmo tempo**, demonstrando o modelo de concorrênci
 ## Documentação
 
 - **Wiki do projeto** — [`docs/wiki.html`](docs/wiki.html)
-- **Apresentação (slides)** — [`docs/apresentacao.html`](docs/apresentacao.html)
+- **Apresentação (slides, HTML)** — [`docs/apresentacao.html`](docs/apresentacao.html)
+- **Apresentação (PowerPoint)** — [`docs/apresentacao.pptx`](docs/apresentacao.pptx)
 
 ## Como executar
 
