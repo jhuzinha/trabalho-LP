@@ -1,4 +1,4 @@
-<title>Go — Web Scraper Concorrente</title>
+<title>Go — Comparador de Preços Concorrente</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -249,12 +249,12 @@
           <span class="by">Linguagens de Programação · demonstração ao vivo</span>
         </div>
         <div class="eyebrow"><span class="num">01</span> A linguagem · o projeto · a comparação</div>
-        <h1>Web&nbsp;Scraper<br>Concorrente em <span style="color:var(--accent)">Go</span></h1>
-        <p class="lead">Consultar <strong>10 lojas ao mesmo tempo</strong> em vez de uma por vez — usando os três construtores que definem a linguagem: <span class="kw">goroutines</span>, <span class="kw">channels</span> e <span class="kw">select</span>. Um projeto pequeno que exercita o que Go faz de melhor: concorrência simples, legível e confiável.</p>
+        <h1>Comparador de&nbsp;Preços<br>Concorrente em <span style="color:var(--accent)">Go</span></h1>
+        <p class="lead">Consultar <strong>10 lojas ao mesmo tempo</strong> em vez de uma por vez — com o modelo de concorrência de Go: <span class="kw">goroutines</span>, <span class="kw">channels</span>, <strong>worker pool</strong> e <span class="kw">context</span>. Um projeto pequeno que exercita o que Go faz de melhor: concorrência simples, legível e confiável.</p>
         <div class="pills" style="margin-top:8px">
-          <span class="pill ok">✓ 3 programas compilando</span>
-          <span class="pill ok">✓ speedup real medido 6.3×</span>
-          <span class="pill warn">⚠ timeout via select</span>
+          <span class="pill ok">✓ build e testes passando</span>
+          <span class="pill ok">✓ speedup real medido 3.7×</span>
+          <span class="pill ok">✓ go test -race limpo</span>
           <span class="pill">comparação vs C &amp; Python</span>
         </div>
         <p class="foot">Este deck cobre todos os critérios da rubrica → histórico, construtores, legibilidade, escrita, confiabilidade, custo, exemplos, projeto e demonstração.</p>
@@ -272,7 +272,7 @@
               <li><strong>2007</strong> — concebida no Google por <strong>Robert Griesemer, Rob Pike e Ken Thompson</strong> (Pike e Thompson vêm do Unix e do C).</li>
               <li><strong>Nov/2009</strong> — anunciada como projeto open source (licença BSD, gratuita).</li>
               <li><strong>Mar/2012</strong> — <strong>Go 1.0</strong> e a "promessa de compatibilidade": código de 2012 ainda compila hoje.</li>
-              <li><strong>Hoje</strong> — <strong>Go 1.24</strong> (2025). Compilada, tipagem estática, <em>garbage collector</em>, sintaxe da família C.</li>
+              <li><strong>Hoje</strong> — série <strong>Go 1.24</strong> (2025); este projeto declara <span class="kw">go 1.21</span> no <span class="kw">go.mod</span>.</li>
             </ul>
             <p class="lead" style="margin-top:20px">A motivação foi concreta: builds de C++ lentíssimos, dependências emaranhadas e concorrência difícil. A resposta foi uma linguagem <strong>minimalista</strong> — só <strong>25 palavras-chave</strong>.</p>
           </div>
@@ -301,7 +301,7 @@ Grafana       <span class="out-acc">dashboards</span>
         <div class="grid cols-3">
           <div class="card">
             <span class="tag">Domínio</span>
-            <h3>Web scraping concorrente</h3>
+            <h3>Comparação de preços</h3>
             <p>Coleta de preços de um mesmo produto em várias lojas via HTTP, decodificando JSON e montando um ranking.</p>
           </div>
           <div class="card">
@@ -316,9 +316,9 @@ Grafana       <span class="out-acc">dashboards</span>
           </div>
         </div>
         <div class="grid cols-3" style="margin-top:16px">
-          <div class="card"><span class="tag">Módulo 1</span><h3>webscraper (mock)</h3><p>Servidor HTTP local simula 10 lojas com latências distintas — demo determinística, sem depender da internet.</p></div>
-          <div class="card"><span class="tag">Módulo 2</span><h3>webscraper-real</h3><p>Consulta a API pública <span class="kw">dummyjson.com</span> de verdade — dados reais, preços com desconto e avaliação.</p></div>
-          <div class="card"><span class="tag">Módulo 3</span><h3>comparacao.py</h3><p>Mesmo problema em Python (sequencial × threads × pool) para medir Go contra outra linguagem.</p></div>
+          <div class="card"><span class="tag">Servidor mock</span><h3>internal/mockserver</h3><p>Servidor HTTP local simula 10 lojas com latências fixas — demo determinística e o mesmo cenário para Go e Python.</p></div>
+          <div class="card"><span class="tag">Scraper Go</span><h3>cmd/scraper · internal/scraper</h3><p>Implementação principal: consulta as lojas com <strong>worker pool</strong> de goroutines e compara concorrente × sequencial.</p></div>
+          <div class="card"><span class="tag">Coletor Python</span><h3>comparador_python.py</h3><p>Mesmo problema com <span class="kw">ThreadPoolExecutor</span>, para medir Go contra outra linguagem no mesmo cenário.</p></div>
         </div>
       </div>
     </section>
@@ -330,45 +330,39 @@ Grafana       <span class="out-acc">dashboards</span>
         <h2><span class="hl">Construtores</span></h2>
         <div class="split">
           <div>
+            <p class="lead" style="margin-bottom:14px">Go <strong>não tem</strong> construtor formal como Java/C++. O idioma é uma função <span class="kw">NewTipo</span> que inicializa <em>e valida</em>.</p>
             <ul class="clean">
-              <li><span class="kw">go f()</span> — dispara uma <strong>goroutine</strong>: função rodando concorrentemente. Custa ~2&nbsp;KB de pilha inicial.</li>
-              <li><span class="kw">chan T</span> — <strong>channel</strong> tipado: o "cano" por onde goroutines trocam dados com segurança, sem locks manuais.</li>
-              <li><span class="kw">&lt;-ch</span> — envio/recepção que <strong>sincroniza</strong>: recebe bloqueia até haver dado.</li>
-              <li><span class="kw">select</span> — espera <strong>vários canais ao mesmo tempo</strong>; o primeiro pronto vence. É o coração do timeout.</li>
-              <li><span class="kw">struct · interface · defer · slice · map</span> — mais o resto do vocabulário do dia a dia.</li>
+              <li><span class="kw">model.NewStore</span> — recusa nome ou URL vazios.</li>
+              <li><span class="kw">scraper.NewConfig</span> — exige timeout e workers &gt; 0.</li>
+              <li><span class="kw">scraper.NewScraper</span> — cria o cliente HTTP já validado.</li>
+              <li><span class="kw">mockserver.NewServer</span> — valida porta e lista de lojas.</li>
             </ul>
+            <p class="lead" style="margin-top:18px">E a concorrência é feita de <strong>palavras-chave da linguagem</strong>: <span class="kw">go</span>, <span class="kw">chan</span>, <span class="kw">select</span>, <span class="kw">sync.WaitGroup</span> e <span class="kw">context</span>.</p>
           </div>
           <div style="display:grid; gap:14px">
             <div class="term">
-              <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title" style="color:var(--accent)">Go — palavra-chave da linguagem</span></div>
-              <div class="term-body"><span class="c-com">// uma goroutine por loja — ~2KB cada</span>
-<span class="c-key">for</span> _, s := <span class="c-key">range</span> Stores {
-    <span class="c-key">go</span> <span class="c-fn">scrapePrice</span>(s.Name, url, ch)
-}
-r := <-ch          <span class="c-com">// channel sincroniza, sem mutex</span>
-
-<span class="c-key">select</span> {                <span class="c-com">// timeout nativo</span>
-<span class="c-key">case</span> r := <-done:     ch <- r
-<span class="c-key">case</span> <-time.<span class="c-fn">After</span>(t): ch <- Result{TimedOut: <span class="c-lit">true</span>}
+              <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title" style="color:var(--accent)">Go — construtor que valida</span></div>
+              <div class="term-body"><span class="c-key">func</span> <span class="c-fn">NewConfig</span>(timeout time.Duration, workers <span class="c-key">int</span>) (Config, <span class="c-key">error</span>) {
+    <span class="c-key">if</span> timeout &lt;= <span class="c-lit">0</span> {
+        <span class="c-key">return</span> Config{}, <span class="c-fn">errors.New</span>(<span class="c-str">"timeout &gt; 0"</span>)
+    }
+    <span class="c-key">if</span> workers &lt;= <span class="c-lit">0</span> {
+        <span class="c-key">return</span> Config{}, <span class="c-fn">errors.New</span>(<span class="c-str">"workers &gt; 0"</span>)
+    }
+    <span class="c-key">return</span> Config{timeout, workers}, <span class="c-lit">nil</span>
 }</div>
             </div>
             <div class="term">
-              <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title" style="color:var(--warn)">C — biblioteca + sincronização à mão</span></div>
-              <div class="term-body"><span class="c-com">#include &lt;pthread.h&gt;   /* threads do SO, ~1MB cada */</span>
-pthread_t th[N];
-<span class="c-key">for</span> (<span class="c-key">int</span> i = 0; i &lt; N; i++)
-    <span class="c-fn">pthread_create</span>(&amp;th[i], NULL, scrape, &amp;a[i]);
-<span class="c-key">for</span> (<span class="c-key">int</span> i = 0; i &lt; N; i++)
-    <span class="c-fn">pthread_join</span>(th[i], NULL);
-
-<span class="c-fn">pthread_mutex_lock</span>(&amp;mtx);   <span class="c-com">/* proteger à mão */</span>
-results[n++] = r;
-<span class="c-fn">pthread_mutex_unlock</span>(&amp;mtx);
-<span class="c-com">/* timeout? poll()/select() em fds — bem mais trabalho */</span></div>
+              <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title" style="color:var(--warn)">C — sem construtor nem validação embutida</span></div>
+              <div class="term-body"><span class="c-com">/* struct crua: quem chama precisa lembrar de validar */</span>
+Config c;
+c.timeout = t;   <span class="c-com">/* nada impede t &lt;= 0 */</span>
+c.workers = w;   <span class="c-com">/* nada impede w &lt;= 0 */</span>
+<span class="c-com">/* validação fica espalhada, feita à mão em cada uso */</span></div>
             </div>
           </div>
         </div>
-        <p class="foot">Em Go, concorrência são <strong>3 palavras-chave</strong> — <span class="kw">go</span>, <span class="kw">chan</span>, <span class="kw">select</span>. Em C, é <strong>biblioteca</strong> (pthreads) mais mutex e timeout montados manualmente.</p>
+        <p class="foot">Em Go, o construtor <span class="kw">NewTipo</span> concentra a validação num só lugar e devolve <span class="kw">error</span> — o resto do sistema nunca recebe um valor inconsistente.</p>
       </div>
     </section>
 
@@ -381,7 +375,7 @@ results[n++] = r;
           <div>
             <ul class="clean">
               <li><strong>gofmt</strong> — formatador oficial embutido. Não há debate sobre estilo: existe <em>uma</em> forma canônica e a ferramenta aplica.</li>
-              <li><strong>25 palavras-chave</strong> — a especificação inteira cabe na cabeça. Pouca sintaxe para decorar.</li>
+              <li><strong>Pacotes com uma responsabilidade</strong> — <span class="kw">model</span>, <span class="kw">scraper</span>, <span class="kw">mockserver</span>, <span class="kw">report</span> separam dados, lógica, servidor e saída.</li>
               <li><strong>Erros explícitos</strong> — <span class="kw">if err != nil</span> deixa o caminho de falha visível na leitura, sem exceções escondidas.</li>
               <li><strong>Sem pré-processador, sem headers, sem macros</strong> — o que você lê é o que executa.</li>
             </ul>
@@ -418,14 +412,14 @@ CURL *c = <span class="c-fn">curl_easy_init</span>();
         <h2><span class="hl">Capacidade de escrita</span></h2>
         <div class="grid cols-2">
           <div class="card"><span class="tag">net/http</span><h3>Cliente HTTP embutido</h3><p>Um <span class="kw">http.Get(url)</span> e pronto. Em C seria libcurl (dependência externa) + configuração manual.</p></div>
-          <div class="card"><span class="tag">encoding/json</span><h3>JSON → struct direto</h3><p>Decodifica para tipos com <em>tags</em> declarativas. Em C não há JSON nativo — precisa de cJSON/jansson.</p></div>
-          <div class="card"><span class="tag">go · chan · select</span><h3>Concorrência de 1ª classe</h3><p>Sem <span class="kw" style="color:var(--warn)">pthread_create</span>, mutex e join manuais como em C.</p></div>
-          <div class="card"><span class="tag">GOOS=windows go build</span><h3>Cross-compilation trivial</h3><p><strong>Comprovado neste teste:</strong> o mesmo código gerou binário Windows a partir do Linux, com um comando.</p></div>
+          <div class="card"><span class="tag">encoding/json · csv</span><h3>JSON → struct e relatórios</h3><p>Decodifica para tipos com <em>tags</em> e grava CSV/JSON na stdlib. Em C não há JSON nativo — precisa de cJSON/jansson.</p></div>
+          <div class="card"><span class="tag">go · chan · worker pool</span><h3>Concorrência de 1ª classe</h3><p>Sem <span class="kw" style="color:var(--warn)">pthread_create</span>, mutex e join manuais como em C.</p></div>
+          <div class="card"><span class="tag">GOOS=windows go build</span><h3>Cross-compilation trivial</h3><p><strong>Comprovado neste teste:</strong> o mesmo código gerou um <span class="kw">.exe</span> Windows a partir do Linux, com um comando.</p></div>
         </div>
         <div class="term" style="margin-top:16px">
           <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title">bash — feito durante o teste deste projeto</span></div>
-          <div class="term-body"><span class="out-dim">$</span> go build -o ws-real .              <span class="out-ok">✓ BUILD real OK</span>
-<span class="out-dim">$</span> GOOS=windows go build -o ws-real.exe .   <span class="out-ok">✓ cross-build windows OK</span></div>
+          <div class="term-body"><span class="out-dim">$</span> go build ./cmd/scraper                        <span class="out-ok">✓ build OK</span>
+<span class="out-dim">$</span> GOOS=windows go build -o scraper.exe ./cmd/scraper   <span class="out-ok">✓ PE32+ Windows OK</span></div>
         </div>
       </div>
     </section>
@@ -439,10 +433,10 @@ CURL *c = <span class="c-fn">curl_easy_init</span>();
           <div>
             <ul class="clean">
               <li><strong>Garbage collector</strong> — sem <span class="kw" style="color:var(--warn)">malloc/free</span>. Adeus <em>use-after-free</em>, double-free e vazamentos manuais.</li>
-              <li><strong>Sem aritmética de ponteiro insegura</strong> — nada de estourar buffer por acidente como em C.</li>
-              <li><strong>Tipagem estática forte</strong> — erros de tipo pegos em tempo de compilação.</li>
-              <li><strong>Race detector</strong> — <span class="kw">go run -race</span> encontra condições de corrida entre goroutines.</li>
-              <li><strong>Canal com buffer 1</strong> — no projeto, <span class="kw">make(chan Result, 1)</span> evita <em>goroutine leak</em> se o timeout vencer (documentado no código).</li>
+              <li><strong>Validação nos construtores</strong> — <span class="kw">NewConfig</span>, <span class="kw">NewStore</span> e <span class="kw">NewServer</span> rejeitam entrada inválida antes de qualquer requisição.</li>
+              <li><strong>Erro vira resultado, não crash</strong> — status HTTP, JSON e preço são validados; uma loja com falha não derruba a coleta.</li>
+              <li><strong>Timeout real</strong> — <span class="kw">context.WithTimeout</span> cancela de verdade a requisição de uma loja lenta.</li>
+              <li><strong>Race detector</strong> — <span class="kw">go test -race</span> rodou <strong>limpo</strong> sobre o worker pool neste projeto.</li>
             </ul>
           </div>
           <div>
@@ -453,7 +447,7 @@ CURL *c = <span class="c-fn">curl_easy_init</span>();
                   <tr><td>Memória</td><td class="go-cell">GC automático</td><td class="c-cell"><span style="color:var(--warn)">malloc/free</span> manual</td></tr>
                   <tr><td>Ponteiro solto</td><td class="go-cell">não há use-after-free</td><td class="c-cell">dangling &amp; double-free</td></tr>
                   <tr><td>Buffer</td><td class="go-cell">checagem de limites</td><td class="c-cell">overflow silencioso</td></tr>
-                  <tr><td>Corrida</td><td class="go-cell"><span class="kw">go -race</span> detecta</td><td class="c-cell">sem detector nativo</td></tr>
+                  <tr><td>Corrida</td><td class="go-cell"><span class="kw">go test -race</span> detecta</td><td class="c-cell">sem detector nativo</td></tr>
                   <tr><td>Falha</td><td class="go-cell">panic explícito</td><td class="c-cell">undefined behavior</td></tr>
                 </tbody>
               </table>
@@ -472,9 +466,10 @@ CURL *c = <span class="c-fn">curl_easy_init</span>();
           <div class="stat acc"><div class="big">R$0</div><div class="lbl">licença BSD — open source, gratuito, sem royalties</div></div>
           <div class="stat acc"><div class="big">~2 KB</div><div class="lbl">por goroutine, contra ~1 MB por thread do SO</div></div>
           <div class="stat acc"><div class="big">1</div><div class="lbl">binário estático único — copiar e rodar, sem runtime instalado</div></div>
-          <div class="stat acc"><div class="big">seg</div><div class="lbl">compilação rápida por design — era essa a dor original do Google</div></div>
+          <div class="stat acc"><div class="big">5</div><div class="lbl">workers no pool: concorrência limitada e previsível</div></div>
         </div>
-        <h3 style="margin:26px 0 12px; font-family:var(--mono); font-size:.8rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); font-weight:600;">+ os "outros" fatores</h3>
+        <p class="lead" style="margin:20px 0 6px; font-size:1.02rem">O <strong>worker pool</strong> é a resposta ao critério de custo: em vez de uma goroutine por loja sem limite, N workers fixos consomem o canal <span class="kw">jobs</span> — mesmo com 10 mil lojas, CPU, memória e conexões ficam sob controle.</p>
+        <h3 style="margin:22px 0 12px; font-family:var(--mono); font-size:.8rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); font-weight:600;">+ os "outros" fatores</h3>
         <div class="table-wrap">
           <table class="cmp">
             <thead><tr><th>Fator</th><th class="go">Go</th><th class="c">C</th></tr></thead>
@@ -495,87 +490,93 @@ CURL *c = <span class="c-fn">curl_easy_init</span>();
     <section class="slide">
       <div class="slide-inner">
         <div class="eyebrow"><span class="num">09</span> Código do projeto</div>
-        <h2><span class="hl">Exemplos</span></h2>
+        <h2><span class="hl">Exemplos</span> — o worker pool</h2>
         <div class="term">
-          <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title">webscraper/main.go — o fluxo completo</span></div>
-          <div class="term-body"><span class="c-com">// 1. canal com buffer: goroutines enviam sem travar umas às outras</span>
-ch := <span class="c-fn">make</span>(<span class="c-key">chan</span> Result, <span class="c-fn">len</span>(mock.Stores))
+          <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title">internal/scraper/scraper.go — RunConcurrent</span></div>
+          <div class="term-body">jobs := <span class="c-fn">make</span>(<span class="c-key">chan</span> model.Store)
+results := <span class="c-fn">make</span>(<span class="c-key">chan</span> model.Result)
 
-<span class="c-com">// 2. dispara TODAS as lojas ao mesmo tempo — uma goroutine cada</span>
-<span class="c-key">for</span> _, store := <span class="c-key">range</span> mock.Stores {
-    url := fmt.<span class="c-fn">Sprintf</span>(<span class="c-str">"http://localhost:%d%s"</span>, serverPort, store.Path)
-    <span class="c-key">go</span> <span class="c-fn">scrapePrice</span>(store.Name, url, ch)
+<span class="c-com">// 1. sobe N workers como goroutines</span>
+<span class="c-key">var</span> wg sync.WaitGroup
+wg.<span class="c-fn">Add</span>(workerCount)
+<span class="c-key">for</span> id := <span class="c-lit">1</span>; id &lt;= workerCount; id++ {
+    <span class="c-key">go</span> s.<span class="c-fn">worker</span>(ctx, id, jobs, results, &amp;wg)
 }
 
-<span class="c-com">// 3. coleta pelo canal — a ordem é a VELOCIDADE da loja, não a da lista</span>
-<span class="c-key">for</span> <span class="c-key">range</span> mock.Stores {
-    r := <-ch          <span class="c-com">// bloqueia até QUALQUER goroutine enviar</span>
-    results = <span class="c-fn">append</span>(results, r)
-    <span class="c-fn">printResult</span>(r)
-}</div>
+<span class="c-com">// 2. produtor enfileira as lojas e fecha o canal jobs</span>
+<span class="c-key">go</span> <span class="c-key">func</span>() {
+    <span class="c-key">defer</span> <span class="c-fn">close</span>(jobs)
+    <span class="c-key">for</span> _, store := <span class="c-key">range</span> stores { jobs &lt;- store }
+}()
+
+<span class="c-com">// 3. quando os workers terminam, fecha results</span>
+<span class="c-key">go</span> <span class="c-key">func</span>() { wg.<span class="c-fn">Wait</span>(); <span class="c-fn">close</span>(results) }()
+
+<span class="c-com">// 4. coleta na ordem em que chegam — pela VELOCIDADE da loja</span>
+<span class="c-key">for</span> r := <span class="c-key">range</span> results { collected = <span class="c-fn">append</span>(collected, r) }</div>
         </div>
-        <p class="lead" style="margin-top:18px">Três linhas de conceito — <strong>disparar</strong>, <strong>esperar</strong>, <strong>coletar</strong> — resolvem concorrência que em C exigiria dezenas de linhas de <span class="kw" style="color:var(--warn)">pthreads</span> e sincronização manual.</p>
+        <p class="lead" style="margin-top:18px">Quatro papéis — <strong>subir workers</strong>, <strong>enfileirar</strong>, <strong>fechar</strong>, <strong>coletar</strong> — resolvem uma concorrência controlada que em C exigiria pthreads, mutex e join manuais.</p>
       </div>
     </section>
 
-    <!-- 10 — DEMONSTRAÇÃO 1 (mock) -->
+    <!-- 10 — DEMONSTRAÇÃO (Go concorrente x sequencial) -->
     <section class="slide">
       <div class="slide-inner">
         <div class="eyebrow"><span class="num">10</span> Projeto</div>
         <h2>Demonstração: <span class="hl">execução concorrente</span></h2>
         <div class="term">
-          <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title">$ ./webscraper — execução real neste teste</span></div>
-          <div class="term-body"><span class="out-ok">✓  KaBuM!          R$ 1280.00  [███░░░░░░░░░░░░░░░░░░░]  0.39s</span>
-<span class="out-ok">✓  Magazine Luiza  R$ 1279.90  [████░░░░░░░░░░░░░░░░░░]  0.54s</span>
-<span class="out-ok">✓  Shopee          R$ 1199.00  [███████░░░░░░░░░░░░░░░]  0.87s</span>
-<span class="out-ok">✓  Mercado Livre   R$ 1249.00  [████████████░░░░░░░░░░]  1.42s</span>
+          <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title">$ go run ./cmd/scraper — execução real neste teste</span></div>
+          <div class="term-body"><span class="out-ok">✓  Magazine Luiza  R$ 1279.90  [████░░░░░░░░░░░░░░░░░░]  0.50s</span>
+<span class="out-ok">✓  KaBuM!          R$ 1280.00  [█████░░░░░░░░░░░░░░░░░]  0.60s</span>
+<span class="out-ok">✓  Shopee          R$ 1199.00  [███████░░░░░░░░░░░░░░░]  0.80s</span>
+<span class="out-ok">✓  Mercado Livre   R$ 1249.00  [██████████████░░░░░░░]  1.60s</span>
 <span class="out-warn">⚠  AliExpress      TIMEOUT      [██████████████████████]  2.50s</span>
 <span class="out-warn">⚠  Carrefour       TIMEOUT      [██████████████████████]  2.50s</span>
 
-  <span class="out-acc">⏱  Concorrente:</span>    2.50s
-  <span class="out-dim">🐌 Serial (est.):  10.90s</span>
-  <span class="out-ok">🚀 Speedup:        4.4x mais rápido!</span>
-  <span class="out-warn">⚠  Timeouts:       2 loja(s) descartada(s) pelo select</span></div>
+  <span class="out-acc">⏱  Concorrente:  4.00s</span>
+  <span class="out-dim">🐌 Sequencial:  14.91s</span>
+  <span class="out-ok">🚀 Speedup:      3.7x mais rápido</span>
+  <span class="out-warn">⚠  Timeouts:     2 loja(s) descartada(s) pelo context</span></div>
         </div>
         <div class="grid cols-3" style="margin-top:16px">
-          <div class="stat good"><div class="big">4.4×</div><div class="lbl">mais rápido que consultar loja por loja</div></div>
-          <div class="stat acc"><div class="big">2.50s</div><div class="lbl">tempo total = a loja mais lenta, não a soma</div></div>
-          <div class="stat"><div class="big" style="color:var(--warn)">2</div><div class="lbl">lojas acima do timeout, cortadas pelo select</div></div>
+          <div class="stat good"><div class="big">3.7×</div><div class="lbl">mais rápido que consultar loja por loja</div></div>
+          <div class="stat acc"><div class="big">4.0s</div><div class="lbl">concorrente — vs 14,9s sequencial</div></div>
+          <div class="stat"><div class="big" style="color:var(--warn)">2</div><div class="lbl">lojas acima do timeout, cortadas pelo context</div></div>
         </div>
       </div>
     </section>
 
-    <!-- 11 — DEMONSTRAÇÃO 2 (real + python) -->
+    <!-- 11 — DEMONSTRAÇÃO 2 (Go vs Python) -->
     <section class="slide">
       <div class="slide-inner">
-        <div class="eyebrow"><span class="num">11</span> Site / demonstração</div>
-        <h2>Demonstração: <span class="hl">API real e comparação</span></h2>
+        <div class="eyebrow"><span class="num">11</span> Comparação de execução</div>
+        <h2>Go <span class="hl">×</span> Python — mesmo cenário</h2>
         <div class="split">
           <div>
             <div class="term">
-              <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title">$ ./webscraper-real — dummyjson.com</span></div>
-              <div class="term-body"><span class="out-ok">✓ Selfie Lamp w/ iPhone   $ 12.08  0.22s</span>
-<span class="out-ok">✓ iPhone Charger          $ 16.29  0.38s</span>
-<span class="out-ok">✓ iPhone 13 Pro           $996.92  0.38s</span>
+              <div class="term-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="term-title">$ make compare — mesmas 10 lojas</span></div>
+              <div class="term-body"><span class="out-acc">Go — worker pool</span>
+  Concorrente: <span class="out-ok">4.00s</span>   Sequencial: 14.91s
+  Speedup:     <span class="out-ok">3.7x</span>
 
-<span class="out-acc">⏱  Concorrente:  0.38s</span>
-<span class="out-dim">🐌 Serial (est.): 2.42s</span>
-<span class="out-ok">🚀 Speedup:       6.3x</span></div>
+<span class="out-acc">Python — ThreadPoolExecutor</span>
+  Concorrente: <span class="out-ok">4.01s</span>   Sequencial: 14.93s
+  Speedup:     <span class="out-ok">3.72x</span>
+
+<span class="out-dim"># melhor oferta (ambos): Shopee R$ 1199.00</span></div>
             </div>
           </div>
           <div>
             <div class="table-wrap">
               <table class="cmp">
-                <thead><tr><th>Implementação</th><th>Tempo</th><th>vs&nbsp;seq</th></tr></thead>
+                <thead><tr><th>Implementação</th><th>Concorr.</th><th>Speedup</th></tr></thead>
                 <tbody>
-                  <tr><td>Python sequencial</td><td>6.01s</td><td class="c-cell">1.0×</td></tr>
-                  <tr><td>Python threads</td><td>7.29s</td><td class="c-cell">0.8×</td></tr>
-                  <tr><td>Python pool</td><td>3.33s</td><td class="c-cell">1.8×</td></tr>
-                  <tr><td style="color:var(--accent)">Go goroutines</td><td style="color:var(--accent)">0.29s</td><td style="color:var(--good);font-weight:700">20.7×</td></tr>
+                  <tr><td style="color:var(--accent)">Go — worker pool</td><td style="color:var(--accent)">4.00s</td><td style="color:var(--good);font-weight:700">3.7×</td></tr>
+                  <tr><td>Python — pool</td><td>4.01s</td><td style="color:var(--good);font-weight:700">3.72×</td></tr>
                 </tbody>
               </table>
             </div>
-            <p class="lead" style="margin-top:16px;font-size:1rem">O <strong>GIL</strong> do Python serializa threads em CPU; goroutines rodam em <strong>paralelismo real</strong> sobre vários núcleos — daí o abismo.</p>
+            <p class="lead" style="margin-top:16px;font-size:1rem">Aqui os dois <strong>empatam</strong> — e é o esperado: o problema é <strong>I/O-bound</strong>, então o <strong>GIL</strong> do Python é liberado durante a espera de rede. A vantagem de Go não é velocidade neste caso, e sim leveza, <span class="kw">context</span> e escala.</p>
           </div>
         </div>
       </div>
@@ -590,7 +591,7 @@ ch := <span class="c-fn">make</span>(<span class="c-key">chan</span> Result, <sp
           <table class="cmp">
             <thead><tr><th>Critério</th><th class="go">Go</th><th class="c">C</th></tr></thead>
             <tbody>
-              <tr><td>Concorrência</td><td class="go-cell">Nativa: <span class="kw">go</span>, channels, select</td><td class="c-cell">Manual: pthreads + mutex/locks</td></tr>
+              <tr><td>Concorrência</td><td class="go-cell">Nativa: <span class="kw">go</span>, channels, worker pool</td><td class="c-cell">Manual: pthreads + mutex/locks</td></tr>
               <tr><td>Memória</td><td class="go-cell">Garbage collector</td><td class="c-cell"><span style="color:var(--warn)">malloc/free</span> manual — fonte de bugs</td></tr>
               <tr><td>Segurança</td><td class="go-cell">Sem ponteiro inseguro; race detector</td><td class="c-cell">Buffer overflow, UB, segfault</td></tr>
               <tr><td>HTTP + JSON</td><td class="go-cell">Bibliotecas padrão embutidas</td><td class="c-cell">Dependências externas (libcurl, cJSON)</td></tr>
@@ -610,36 +611,36 @@ ch := <span class="c-fn">make</span>(<span class="c-key">chan</span> Result, <sp
       <div class="slide-inner">
         <div class="eyebrow"><span class="num">13</span> A equipe</div>
         <h2>O grupo e a <span class="hl">divisão do código</span></h2>
-        <p class="lead">Grupo de 5 integrantes — cada um responsável por uma parte do <strong>código Go</strong> e por um <strong>componente do projeto</strong> (slides, wiki, vídeo e comparações).</p>
+        <p class="lead">Grupo de 5 integrantes — cada um responsável por um pacote do <strong>código Go</strong> e por um <strong>componente do projeto</strong> (slides, wiki, vídeo e comparações).</p>
         <div class="grid cols-3">
           <div class="card">
             <span class="tag">Servidor mock</span>
             <h3>Gustavo</h3>
-            <p>Estrutura do <span class="kw">mock/server.go</span>: o tipo <span class="kw">StoreConfig</span>, a lista das 10 lojas com latências próprias e o <span class="kw">StartServer</span>, que sobe os handlers HTTP simulando os delays.</p>
+            <p>O <span class="kw">internal/mockserver</span>: o tipo <span class="kw">StoreConfig</span>, a lista das 10 lojas com latências fixas e o construtor <span class="kw">NewServer</span>, que sobe os handlers HTTP simulando os delays.</p>
             <p class="also"><b>+ também:</b> Wiki / documentação do repositório</p>
           </div>
           <div class="card">
             <span class="tag">Orquestração concorrente</span>
             <h3>Jhuliana</h3>
-            <p>O <span class="kw">main.go</span> do scraper: dispara uma goroutine por loja, cria o canal bufferizado e coleta os resultados com <span class="kw">&lt;-ch</span> conforme chegam.</p>
+            <p>A <span class="kw">RunConcurrent</span> e o <span class="kw">cmd/scraper</span>: monta o worker pool, os canais <span class="kw">jobs</span>/<span class="kw">results</span> e o <span class="kw">sync.WaitGroup</span>, e coleta os resultados conforme chegam.</p>
             <p class="also"><b>+ também:</b> Slides / apresentação</p>
           </div>
           <div class="card">
-            <span class="tag">Select + timeout</span>
+            <span class="tag">Timeout &amp; confiabilidade</span>
             <h3>Marcelo</h3>
-            <p>O núcleo em <span class="kw">scrapePrice</span>: goroutine interna para o request HTTP e o <span class="kw">select</span> entre a resposta e <span class="kw">time.After</span> — quem chega primeiro vence.</p>
+            <p>A função <span class="kw">Fetch</span>: <span class="kw">context.WithTimeout</span> para cancelar lojas lentas, validação de status/JSON/preço e os construtores <span class="kw">NewConfig</span>/<span class="kw">NewScraper</span>.</p>
             <p class="also"><b>+ também:</b> Comparação com a linguagem C</p>
           </div>
           <div class="card">
-            <span class="tag">Scraper da API real</span>
+            <span class="tag">Modelo de dados</span>
             <h3>Enzo</h3>
-            <p>O <span class="kw">webscraper-real</span>: as structs <span class="kw">Product</span> e <span class="kw">SearchResponse</span>, a busca na DummyJSON e o <em>decode</em> do JSON em tipos Go.</p>
+            <p>O <span class="kw">internal/model</span>: as structs <span class="kw">Store</span> e <span class="kw">Result</span> com tags de JSON e os construtores <span class="kw">NewStore</span>, <span class="kw">NewSuccessResult</span>, <span class="kw">NewTimeoutResult</span> + testes.</p>
             <p class="also"><b>+ também:</b> Edição de vídeo</p>
           </div>
           <div class="card">
-            <span class="tag">Saída &amp; portabilidade</span>
+            <span class="tag">Saída &amp; comparação Python</span>
             <h3>Pedro Galeno</h3>
-            <p>A camada visual — <span class="kw">timeBar</span>, <span class="kw">printResult</span>/<span class="kw">printSummary</span>, cores ANSI e o ranking — mais as build tags <span class="kw">ansi_windows</span>/<span class="kw">ansi_other</span>.</p>
+            <p>O <span class="kw">internal/report</span> — barra de progresso, ranking, cores ANSI, <span class="kw">SaveCSV</span>/<span class="kw">SaveJSON</span> — e o coletor <span class="kw">comparador_python.py</span> com ThreadPoolExecutor.</p>
             <p class="also"><b>+ também:</b> Comparação Python × Go (benchmark)</p>
           </div>
         </div>
@@ -652,11 +653,11 @@ ch := <span class="c-fn">make</span>(<span class="c-key">chan</span> Result, <sp
         <div class="accent-rule" style="margin:0 auto 22px"></div>
         <div class="eyebrow" style="justify-content:center"><span class="num">14</span> Conclusão</div>
         <h1 style="font-size:clamp(2rem,5vw,3.6rem)">Go, <span style="color:var(--accent)">em resumo</span></h1>
-        <p class="lead" style="margin:0 auto 24px">Go pega a sintaxe familiar do C e troca gerência manual de memória e concorrência frágil por <strong>goroutines, channels e um GC</strong>. O projeto prova isso na prática: <strong>6.3× mais rápido</strong> que serial, <strong>20.7×</strong> mais que Python sequencial — em código que cabe numa tela.</p>
+        <p class="lead" style="margin:0 auto 24px">Go pega a sintaxe familiar do C e troca gerência manual de memória e concorrência frágil por <strong>goroutines, channels, worker pool e um GC</strong>. Neste projeto I/O-bound, Go e Python <strong>empatam</strong> (~3.7×) — a vantagem de Go não é velocidade aqui, e sim ter a concorrência como <strong>parte central da linguagem</strong>: leve, cancelável com <span class="kw">context</span> e pronta para escalar em produção.</p>
         <div class="pills" style="justify-content:center">
           <span class="pill ok">✓ goroutines</span>
-          <span class="pill ok">✓ channels</span>
-          <span class="pill ok">✓ select + timeout</span>
+          <span class="pill ok">✓ channels + worker pool</span>
+          <span class="pill ok">✓ context timeout</span>
           <span class="pill">obrigado! 🎯</span>
         </div>
       </div>
